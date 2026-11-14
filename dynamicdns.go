@@ -263,7 +263,8 @@ initLoop:
 
 // checkIPAndUpdateDNS checks public IP addresses and, for any IP addresses
 // that are different from before, it updates DNS records accordingly.
-// It returns an error if all IP sources fail.
+// It returns an error if all IP sources fail or a DNS update failed, so the
+// initial check is retried.
 func (a App) checkIPAndUpdateDNS() error {
 	a.logger.Debug("beginning IP address check")
 
@@ -280,8 +281,12 @@ func (a App) checkIPAndUpdateDNS() error {
 	currentIPs = removeDuplicateIPs(currentIPs)
 
 	// update the DNS records of each provider's domains
+	failed := 0
 	for i := range a.Providers {
-		a.updateProviderDNS(&a.Providers[i], currentIPs)
+		failed += a.updateProviderDNS(&a.Providers[i], currentIPs)
+	}
+	if failed > 0 {
+		return fmt.Errorf("updating the DNS records of %d zone(s) failed", failed)
 	}
 
 	return nil
@@ -330,8 +335,14 @@ func (a App) lookupPublicIPs() ([]netip.Addr, error) {
 			continue
 		}
 		answered++
-		for _, ip := range removeDuplicateIPs(ips) {
-			votes[ip]++
+		// unmapped, so an IPv4-mapped IPv6 address counts as its IPv4 address
+		seen := make(map[netip.Addr]bool)
+		for _, ip := range ips {
+			ip = ip.Unmap()
+			if !seen[ip] {
+				seen[ip] = true
+				votes[ip]++
+			}
 		}
 	}
 
@@ -395,8 +406,8 @@ func ipSourceName(src IPSource) string {
 
 // updateProviderDNS diffs currentIPs against the last known IPs of the
 // provider's domains and updates the DNS records that are different.
-// Failures are logged.
-func (a App) updateProviderDNS(p *Provider, currentIPs []netip.Addr) {
+// Failures are logged; it returns the number of zones whose update failed.
+func (a App) updateProviderDNS(p *Provider, currentIPs []netip.Addr) int {
 	allDomains := a.allDomainsFor(p)
 
 	// if we don't know the current IPs of some domains, look them up from DNS
@@ -432,9 +443,10 @@ func (a App) updateProviderDNS(p *Provider, currentIPs []netip.Addr) {
 
 	if len(updatedRecsByZone) == 0 {
 		a.logger.Debug("no IP address change; no update needed")
-		return
+		return 0
 	}
 
+	failed := 0
 	for zone, addresses := range updatedRecsByZone {
 		records := make([]libdns.Record, len(addresses))
 		for i, rec := range addresses {
@@ -453,6 +465,7 @@ func (a App) updateProviderDNS(p *Provider, currentIPs []netip.Addr) {
 				zap.Error(err),
 			)
 			// Not remembered as current, so the next check tries these again.
+			failed++
 			continue
 		}
 		for _, rec := range addresses {
@@ -467,12 +480,16 @@ func (a App) updateProviderDNS(p *Provider, currentIPs []netip.Addr) {
 		}
 	}
 
+	if failed == len(updatedRecsByZone) {
+		return failed
+	}
 	currentIPStrings := make([]string, len(currentIPs))
 	for i, val := range currentIPs {
 		currentIPStrings[i] = val.String()
 	}
 	a.logger.Info("finished updating DNS",
 		zap.Strings("current_ips", currentIPStrings))
+	return failed
 }
 
 // seedLastIPsFromDNS looks up, from the provider's DNS records, the current

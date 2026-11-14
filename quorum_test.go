@@ -59,6 +59,8 @@ func TestLookupPublicIPsQuorum(t *testing.T) {
 		{"two agreeing wrong sources win", []IPSource{ok(wrong), ok(wrong), ok(right)}, 2, []string{wrong}},
 		{"quorum 3 needs all three", []IPSource{ok(right), ok(right), down}, 3, nil},
 		{"a source counts once per address", []IPSource{ok(wrong, wrong), ok(right)}, 2, nil},
+		{"a source counts once per address, also mapped", []IPSource{ok(wrong, "::ffff:"+wrong), ok(right)}, 2, nil},
+		{"an IPv4-mapped address counts as IPv4", []IPSource{ok("::ffff:" + right), ok(right)}, 2, []string{right}},
 		{"IPv4 agreed, IPv6 not", []IPSource{ok(right, "2001:db8::1"), ok(right, "2001:db8::2")}, 2, []string{right}},
 		{"both versions agreed", []IPSource{ok(right, "2001:db8::1"), ok(right, "2001:db8::1")}, 2, []string{right, "2001:db8::1"}},
 	} {
