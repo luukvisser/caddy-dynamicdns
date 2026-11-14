@@ -63,6 +63,20 @@ The interface option will return at most 1 IPv4 and 1 IPv6 address. It will only
 
 Note that it's redundant to specify both IP versions in the config, since the default is to enable both IPv4 and IPv6. It's purpose is to allow disabling one or the other if your server is only reachable via one of the versions. It's included in this config example for posterity.
 
+By default the first IP source that returns an address wins, so one source that answers with a wrong address decides what goes into DNS. To require agreement, set `ip_source_quorum`: with `ip_source_quorum 2`, every IP source is asked and an address is only used when at least two of them returned it. An IP version without enough agreement is left unchanged until the next check, and a warning is logged. Each `ip_source` line counts once, so give every service its own line:
+
+```
+dynamic_dns {
+	# ...
+	ip_source simple_http https://icanhazip.com
+	ip_source simple_http https://api.ipify.org
+	ip_source simple_http https://ifconfig.co
+	ip_source_quorum 2
+}
+```
+
+With three sources and a quorum of 2, one source that is down or wrong does not stop or change the update.
+
 Caddyfile config ([global options](https://caddyserver.com/docs/caddyfile/options)):
 
 ```
@@ -149,7 +163,7 @@ The `provider` directive can be repeated to update domains across multiple DNS p
 }
 ```
 
-Inside a provider's block, the name `domains` is reserved for this app; everything else belongs to the DNS provider module as usual (whether inline arguments or block subdirectives). All other options (`ip_source`, `check_interval`, `versions`, `include`/`exclude`, `ttl`, `update_only`, `dynamic_domains`) remain global and apply to all providers.
+Inside a provider's block, the name `domains` is reserved for this app; everything else belongs to the DNS provider module as usual (whether inline arguments or block subdirectives). All other options (`ip_source`, `ip_source_quorum`, `check_interval`, `versions`, `include`/`exclude`, `ttl`, `update_only`, `dynamic_domains`) remain global and apply to all providers.
 
 Equivalent JSON config:
 
