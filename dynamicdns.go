@@ -345,10 +345,12 @@ func (a App) updateProviderDNS(p *Provider, currentIPs []netip.Addr) {
 			records[i] = rec
 		}
 		if _, err := p.dnsProvider.SetRecords(a.ctx, zone, records); err != nil {
-			a.logger.Error("failed setting DNS record(s) with new IP address(es)",
+			a.logger.Error("failed setting DNS record(s) with new IP address(es); will retry at the next check",
 				zap.String("zone", zone),
 				zap.Error(err),
 			)
+			// Not remembered as current, so the next check tries these again.
+			continue
 		}
 		for _, rec := range addresses {
 			name := libdns.AbsoluteName(rec.Name, zone)
