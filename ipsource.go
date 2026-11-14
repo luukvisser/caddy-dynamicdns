@@ -158,10 +158,17 @@ func matchFamily(addr netip.Addr, network string) (netip.Addr, error) {
 	return addr, nil
 }
 
+// simpleHTTPTimeout limits a whole lookup, response body included. The
+// dial and TLS handshake timeouts below do not cover an endpoint that
+// accepts the request and then stalls, which would otherwise block the
+// check (and every later one) until Caddy stops.
+var simpleHTTPTimeout = 30 * time.Second
+
 // makeClient makes an HTTP client that forces use of the specified network type (e.g. "tcp6").
 func (SimpleHTTP) makeClient(network string) *http.Client {
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	return &http.Client{
+		Timeout: simpleHTTPTimeout,
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: func(ctx context.Context, _, address string) (net.Conn, error) {
